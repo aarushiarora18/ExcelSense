@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, Optional
 
+import src.analysis.advanced_patterns  # noqa: F401  registers composite_score, two_stage_group, rule_breach
 from src.analysis.patterns import PATTERNS, PatternError
 from src.data.query_engine import QueryError
 from src.logic import FormulaError, RuleError

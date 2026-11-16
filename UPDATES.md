@@ -71,6 +71,19 @@ charts are now drawn with Altair, with the category encoded as nominal in the
 evidence's own order and the value axis starting at zero. Line, scatter and
 distribution charts are unchanged.
 
+### 4. Three analyses could never run in the app
+
+**Problem.** PS-073 (agent composite quality score), PS-083 (customer value
+segmentation) and PS-097 (unusual attribute combinations) failed in the live app with
+*"unknown analytical pattern 'composite_score'"* (or `two_stage_group` /
+`rule_breach`). Those patterns are registered when `src/analysis/advanced_patterns.py`
+is imported, and only the test suite imported it, so the tests passed while the app
+could not run them.
+
+**Fix.** `src/ps/executor.py` now imports `src.analysis.advanced_patterns`, so the
+patterns are registered wherever the executor is used. All 103 analyses now run in the
+app (PS-031 and PS-069 still need a policy or agent id, as designed).
+
 ## Tests
 
 - Added to `tests/api/test_chatbot.py`:
