@@ -155,6 +155,36 @@ def table_to_frame(table: EvidenceTable) -> pd.DataFrame:
 # Rendering
 # ---------------------------------------------------------------------------
 
+def _category_bars(frame: pd.DataFrame, horizontal: bool) -> None:
+    """Bars in the evidence's own order, on an axis that starts at zero.
+
+    st.bar_chart re-sorts categories alphabetically, which turns a ranking into
+    an A-Z list, and reads numeric-looking labels such as agent ids as numbers.
+    Encoding the category as nominal with an explicit order keeps both intact.
+    """
+    import altair as alt
+
+    category = frame.index.name or "category"
+    order = list(frame.index)
+    long = frame.reset_index().melt(id_vars=category, var_name="series",
+                                    value_name="value")
+    cat = alt.X if not horizontal else alt.Y
+    val = alt.Y if not horizontal else alt.X
+    encoding = {
+        ("y" if horizontal else "x"): cat(f"{category}:N", sort=order, title=category),
+        ("x" if horizontal else "y"): val("value:Q", title=None,
+                                          scale=alt.Scale(zero=True)),
+        "tooltip": [alt.Tooltip(f"{category}:N"), alt.Tooltip("series:N"),
+                    alt.Tooltip("value:Q", format=",.2f")],
+    }
+    if frame.shape[1] > 1:
+        encoding["color"] = alt.Color("series:N", title=None)
+        encoding[("yOffset" if horizontal else "xOffset")] = "series:N"
+    height = max(240, 34 * len(order)) if horizontal else 320
+    st.altair_chart(alt.Chart(long).mark_bar().encode(**encoding).properties(height=height),
+                    width="stretch")
+
+
 def render_chart(chart: ChartSpec) -> None:
     """Draw the chart the evidence declared, or say why there is none."""
     from src.visualization.charts import (
@@ -178,10 +208,7 @@ def render_chart(chart: ChartSpec) -> None:
                        name=chart.category_label or chart.category_key))
 
     if chart.chart_type in CATEGORY_CHARTS:
-        if chart.chart_type == "horizontal_bar":
-            st.bar_chart(frame, horizontal=True, height=max(240, 34 * len(frame)))
-        else:
-            st.bar_chart(frame, height=320)
+        _category_bars(frame, horizontal=chart.chart_type == "horizontal_bar")
     elif chart.chart_type in SERIES_CHARTS:
         st.line_chart(frame, height=320)
     elif chart.chart_type in POINT_CHARTS:
