@@ -20,12 +20,14 @@ from src.data import Dataset, load_dataset
 from src.evidence import EvidenceTable, build_tables
 from src.llm import Answer, Summarizer
 from src.llm.client import LLMClient
+from src.llm.composer import focus_sentence
 from src.ps.evidence import EvidencePackage
 from src.ps.executor import PSExecutor
 from src.ps.registry import PSRegistry, get_registry
 from src.router import QueryRouter, RoutingDecision
 from src.router.router import (
     AMBIGUOUS,
+    NON_STATE_LABELS,
     REFUSED_INVALID_ENTITY,
     REFUSED_LOW_CONFIDENCE,
     REFUSED_UNSUPPORTED,
@@ -238,6 +240,12 @@ class Chatbot:
 
         evidence = self.executor.execute(decision.problem_id, parameters, question=question)
         summary = self.summarizer.summarize(evidence)
+        states = [e.value for e in decision.entities.entities
+                  if e.kind == "state" and e.value not in NON_STATE_LABELS]
+        if states and evidence.is_sufficient:
+            focus = focus_sentence(evidence, states[0])
+            if focus:
+                summary.text = "{} {}".format(focus, summary.text)
 
         if not evidence.is_sufficient:
             response = ChatResponse(

@@ -342,7 +342,7 @@ def defs():
             objective="Rank states by lapse rate and renewal paid rate with sample guards.",
             queries=["Worst states for lapse", "Which state has the highest lapse rate?",
                      "State persistency comparison", "Geographic lapse analysis",
-                     "Where are we losing customers?"],
+                     "Where are we losing customers?", "Lapse rate by state"],
             tables=["owner", "policy", "persistency"],
             columns=["owner.Owner.Comm.State", "owner.AppID",
                      "policy.AppID", "policy.POLICY.STATUS", "policy.APE",

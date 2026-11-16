@@ -1,6 +1,6 @@
 {
   "catalogue_version": "1.0.0",
-  "generated_at_utc": "2026-09-16T07:46:38Z",
+  "generated_at_utc": "2026-11-16T06:10:53Z",
   "generated_by": "scripts/build_ps_catalogue.py",
   "data_contract_version": "1.0.0",
   "grounded_in": "Talk_to_Data_PoC_Documentation_Metadata_V4",
@@ -75,7 +75,8 @@
         "Which agents have the most lapses?",
         "Agent lapse rates",
         "Rank agents by lapse",
-        "Who sells business that lapses?"
+        "Who sells business that lapses?",
+        "Which agents have the highest lapse rate?"
       ],
       "relevant_tables": [
         "policy",

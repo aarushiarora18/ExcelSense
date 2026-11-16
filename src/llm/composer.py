@@ -822,6 +822,37 @@ def compose_answer(evidence: EvidencePackage) -> str:
     return "{} {}".format(body, caveat).strip() if caveat else body
 
 
+def focus_sentence(evidence: EvidencePackage, state: str) -> str:
+    """The named state's own figure from a by-state result, or why it is absent.
+
+    A question about one state is answered by an analysis that ranks every state,
+    so the headline leads with the top state. This sentence puts the state the
+    question named first, taken from the same evidence rows.
+    """
+    rows = evidence.result_table or []
+    column = next((k for k in (rows[0] if rows else {}) if k.endswith("Comm.State")), None)
+    if not column:
+        return ""
+    row = next((r for r in rows if str(r.get(column)).lower() == state.lower()), None)
+    if row is None:
+        return "{} is not among the {} states in this result.".format(state, len(rows))
+    measure = _headline_measure(evidence)
+    if not measure or not _is_number(row.get(measure)):
+        return ""
+    unit = _unit_of(measure, row[measure])
+    label = _cap(_entity_label(row)) if len(
+        [r for r in rows if r.get(column) == row.get(column)]) > 1 else state
+    sentence = "{}: {} {}".format(label, _measure_phrase(measure), _format(row[measure], unit))
+    ranking = evidence.ranking or {}
+    if _is_number(row.get("rank")) and ranking.get("measure") == measure:
+        sentence += ", ranked {} of {}".format(
+            _format(row["rank"], "count"), ranking.get("entities_ranked") or len(rows))
+    baseline = evidence.comparison_baseline
+    if baseline and baseline.get("value") is not None and unit == "rate":
+        sentence += ", against the portfolio's {}".format(_format(baseline["value"], unit))
+    return sentence + "."
+
+
 def _leading_caveat(evidence: EvidencePackage) -> str:
     """A qualification appended to every answer type.
 

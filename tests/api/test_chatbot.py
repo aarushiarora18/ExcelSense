@@ -337,3 +337,22 @@ def test_repl_exits_on_eof(bot):
     finally:
         builtins.input = original
     assert "Excel_sense_v2" in stream.getvalue()
+
+
+# -- a named state -----------------------------------------------------------
+
+def test_named_state_is_never_answered_with_the_portfolio_figure(bot):
+    # No analysis filters to one state. This once routed to the portfolio lapse
+    # rate and reported 10.95% as though it were Maharashtra's.
+    response = bot.ask("What is the lapse rate in Maharashtra?")
+    assert response.outcome == ANSWERED
+    assert response.answer.startswith("Maharashtra: lapse rate 6.31%")
+
+
+def test_named_state_without_a_state_analysis_is_held_for_clarification(bot):
+    response = bot.ask("Why are customers in Maharashtra cancelling their policies?")
+    assert response.outcome == CLARIFY
+
+
+def test_nri_is_not_treated_as_a_state(bot):
+    assert bot.ask("Do we have NRI policyholders?").problem_id == "PS-087"

@@ -29,6 +29,10 @@ ROUTER_VERSION = "1.0.0"
 CONFIDENCE_FLOOR = 0.32      # below this nothing is routed
 AMBIGUITY_MARGIN = 0.020     # a lead this thin over the runner-up is not a decision
 MAX_CANDIDATES = 5
+STATE_COLUMN = "owner_Owner.Comm.State"
+# Values of the state column that are not Indian states. "NRI" marks overseas
+# policyholders, which the overseas analysis answers directly.
+NON_STATE_LABELS = {"NRI"}
 
 # The project-defined acceptance criteria for Phase 5, asserted in tests/router.
 ACCEPTANCE = {
@@ -114,8 +118,8 @@ class QueryRouter:
         if missing:
             return self._refuse_unsupported(question, normalized, entities, missing)
 
-        candidates = self.matcher.score(
-            normalized, entity_kinds=entities.kinds)[:MAX_CANDIDATES]
+        scored = self.matcher.score(normalized, entity_kinds=entities.kinds)
+        candidates = scored[:MAX_CANDIDATES]
         best = candidates[0]
 
         # 2. An identifier that does not exist is a dead end, however well the
@@ -144,7 +148,37 @@ class QueryRouter:
                         "but wrong result."),
                 suggestions=self._suggest(candidates))
 
-        # 4. Two candidates too close to separate: ask rather than guess.
+        # 4. A named state is a filter, and no PS outside the geographic domain can
+        #    apply it: routing there would answer for the whole portfolio as though
+        #    it were the state. Use the best geographic PS, which reports the state
+        #    alongside the others, or ask.
+        states = [e.value for e in entities.entities
+                  if e.kind == "state" and e.value not in NON_STATE_LABELS]
+        if states and not self._handles_state(best):
+            state = states[0]
+            geographic = [c for c in scored if self._handles_state(c)
+                          and c.score >= CONFIDENCE_FLOOR]
+            if geographic:
+                chosen = geographic[0]
+                return RoutingDecision(
+                    question=question, outcome=ROUTED, problem_id=chosen.problem_id,
+                    confidence=chosen.score, candidates=[chosen] + [
+                        c for c in candidates if c is not chosen][:MAX_CANDIDATES - 1],
+                    entities=entities, normalized=normalized,
+                    parameters=self._parameters_for(chosen.problem_id, entities),
+                    reason=("Matched {} with confidence {:.2f}. No analysis filters to a "
+                            "single state, so {} is reported alongside the other states."
+                            .format(chosen.problem_id, chosen.score, state)))
+            return RoutingDecision(
+                question=question, outcome=AMBIGUOUS,
+                candidates=candidates, entities=entities, normalized=normalized,
+                confidence=best.score,
+                reason=("No analysis can restrict this to {}; answering would report the "
+                        "whole portfolio as though it were {}.".format(state, state)),
+                suggestions=self._suggest(
+                    [c for c in scored if self._handles_state(c)][:1] + candidates))
+
+        # 5. Two candidates too close to separate: ask rather than guess.
         runner_up = candidates[1] if len(candidates) > 1 else None
         if runner_up and (best.score - runner_up.score) < AMBIGUITY_MARGIN:
             return RoutingDecision(
@@ -167,6 +201,15 @@ class QueryRouter:
     def _needs_identifier(self, problem_id: str) -> bool:
         declared = set(self.registry.get(problem_id).record.get("parameters", {}))
         return bool(declared & {"app_id", "agent_id"})
+
+    def _handles_state(self, candidate: Candidate) -> bool:
+        """True when the PS reports state by state, so a named state's figure is in it."""
+        record = self.registry.get(candidate.problem_id).record
+        if "state" in record.get("parameters", {}):
+            return True
+        group_by = (record.get("execution") or {}).get("group_by")
+        first = group_by[0] if isinstance(group_by, list) and group_by else group_by
+        return first == STATE_COLUMN
 
     def _parameters_for(self, problem_id: str, entities: ExtractionResult) -> Dict[str, Any]:
         """Keep only the entity values this PS actually declares."""

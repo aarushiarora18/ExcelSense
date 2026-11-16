@@ -1,6 +1,6 @@
 {
   "catalogue_version": "1.0.0",
-  "generated_at_utc": "2026-09-16T07:46:38Z",
+  "generated_at_utc": "2026-11-16T06:10:53Z",
   "generated_by": "scripts/build_ps_catalogue.py",
   "data_contract_version": "1.0.0",
   "grounded_in": "Talk_to_Data_PoC_Documentation_Metadata_V4",
@@ -334,7 +334,8 @@
         "Which state has the highest lapse rate?",
         "State persistency comparison",
         "Geographic lapse analysis",
-        "Where are we losing customers?"
+        "Where are we losing customers?",
+        "Lapse rate by state"
       ],
       "relevant_tables": [
         "owner",
