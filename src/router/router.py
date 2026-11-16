@@ -30,6 +30,9 @@ CONFIDENCE_FLOOR = 0.32      # below this nothing is routed
 AMBIGUITY_MARGIN = 0.020     # a lead this thin over the runner-up is not a decision
 MAX_CANDIDATES = 5
 STATE_COLUMN = "owner_Owner.Comm.State"
+# How far below the best score a PS that covers the whole question may sit and still
+# be preferred to it. Further than this and it is a different question.
+COVERAGE_MARGIN = 0.10
 # Values of the state column that are not Indian states. "NRI" marks overseas
 # policyholders, which the overseas analysis answers directly.
 NON_STATE_LABELS = {"NRI"}
@@ -62,6 +65,7 @@ class RoutingDecision:
     normalized: Optional[NormalizedQuery] = None
     reason: str = ""
     missing_concepts: List[Dict[str, str]] = field(default_factory=list)
+    uncovered: List[str] = field(default_factory=list)
     suggestions: List[Dict[str, str]] = field(default_factory=list)
 
     @property
@@ -85,6 +89,7 @@ class RoutingDecision:
             "entities": self.entities.as_dict() if self.entities else {},
             "normalized": self.normalized.as_dict() if self.normalized else {},
             "missing_concepts": list(self.missing_concepts),
+            "uncovered": list(self.uncovered),
             "suggestions": list(self.suggestions),
             "thresholds": {"confidence_floor": CONFIDENCE_FLOOR,
                            "ambiguity_margin": AMBIGUITY_MARGIN},
@@ -178,7 +183,32 @@ class QueryRouter:
                 suggestions=self._suggest(
                     [c for c in scored if self._handles_state(c)][:1] + candidates))
 
-        # 5. Two candidates too close to separate: ask rather than guess.
+        # 5. The match must answer all of the question. A PS that scores well on
+        #    half of a two-part question answers that half confidently and drops the
+        #    rest. Prefer a close runner-up that covers everything; otherwise ask.
+        missing = self.matcher.uncovered(normalized, best.problem_id)
+        if missing:
+            floor = max(CONFIDENCE_FLOOR, best.score - COVERAGE_MARGIN)
+            covering = [c for c in scored if c.score >= floor
+                        and not self.matcher.uncovered(normalized, c.problem_id)]
+            if not covering:
+                # A PS that covers the whole question but scores too far below to
+                # route to is still the best thing to offer.
+                plausible = [c for c in scored if c.score >= CONFIDENCE_FLOOR
+                             and not self.matcher.uncovered(normalized, c.problem_id)]
+                return RoutingDecision(
+                    question=question, outcome=AMBIGUOUS,
+                    candidates=candidates, entities=entities, normalized=normalized,
+                    confidence=best.score, uncovered=missing,
+                    reason=("The closest analysis ('{}') does not cover {}, so it would "
+                            "answer only part of this question.".format(
+                                best.problem_statement, _join(missing))),
+                    suggestions=self._suggest(plausible[:1] + [
+                        c for c in candidates if c not in plausible[:1]]))
+            best = covering[0]
+            candidates = covering[:MAX_CANDIDATES]
+
+        # 6. Two candidates too close to separate: ask rather than guess.
         runner_up = candidates[1] if len(candidates) > 1 else None
         if runner_up and (best.score - runner_up.score) < AMBIGUITY_MARGIN:
             return RoutingDecision(
@@ -238,3 +268,7 @@ class QueryRouter:
 
 def get_router() -> QueryRouter:
     return QueryRouter()
+
+
+def _join(items: List[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " or " + items[-1]

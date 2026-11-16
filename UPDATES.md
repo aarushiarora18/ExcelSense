@@ -84,12 +84,56 @@ could not run them.
 patterns are registered wherever the executor is used. All 103 analyses now run in the
 app (PS-031 and PS-069 still need a policy or agent id, as designed).
 
+### 5. Two-part questions were answered by an analysis covering only one part
+
+**Problem.** The router picks one of the 103 analyses by score. A question that
+combines two ideas scored best against an analysis covering one of them, which was
+answered confidently while the rest was silently dropped. For example:
+
+| Question | Previously answered with |
+|---|---|
+| Which state has the highest APE and what is its lapse rate? | the state lapse ranking (no APE) |
+| Which product has the most death claims? | the product with the highest *lapse* rate |
+| Do agents with high complaint rates also sell policies that lapse more? | lapse rate by policy year |
+| Which branches have the worst renewal collection? | the branch with the most policies |
+| Which customers hold more than one policy and do they lapse less? | the customer with the highest APE |
+
+**Fix.**
+- `src/router/matcher.py` (`MEASURE_FAMILIES`, `PSMatcher.uncovered`): a coverage
+  check. Every measure the question names (claims, conduct/complaints, APE, lapse,
+  surrender, persistency/renewal) must be something the analysis is about, judged from
+  its statement, example questions, concepts and tables. Every grouping the question
+  explicitly asks for ("which branches", "by agent") must be one the analysis groups
+  on. Executive analyses that span every domain are exempt from the grouping check.
+- `src/router/router.py`: if the best match leaves part of the question uncovered,
+  the router uses a runner-up within 0.10 of its score that covers all of it.
+  Otherwise it asks for clarification, naming what the closest analysis does not cover
+  and leading the suggestions with the best analysis that does cover it, if one
+  clears the confidence floor.
+
+**Result.** "Which product has the most death claims?" now routes to claim incidence by
+product (PS-059). The other four are held for clarification instead of answered
+wrongly; the complaint question suggests PS-074 ("Do agents with poor conduct
+indicators also produce more lapses?") first. None of the 638 catalogue example
+questions is flagged against its own analysis, and the routing regression baseline
+is unchanged.
+
+**Not covered.** The check works on *what* is measured, not *which statistic*:
+"average claim amount by cause of death" still returns claim counts by cause. A
+follow-up such as "What is their lapse rate?" after asking about an agent still
+returns the portfolio rate. Real multi-hop answers (combining two analyses) are not
+supported; these questions are now refused rather than answered.
+
 ## Tests
 
 - Added to `tests/api/test_chatbot.py`:
   - a named state is never answered with the portfolio figure
   - a named state with no fitting state analysis is held for clarification
   - "NRI" is not treated as a state
+  - questions the best match only half answers are held for clarification
+  - the clarification offers the analysis that covers the whole question
+  - a close runner-up that covers the whole question is used
+  - every catalogue example question is covered by its own analysis
 - The full suite passes, including the routing regression baseline
   (`tests/regression/test_routing_regression.py`).
 

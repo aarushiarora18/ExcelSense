@@ -356,3 +356,37 @@ def test_named_state_without_a_state_analysis_is_held_for_clarification(bot):
 
 def test_nri_is_not_treated_as_a_state(bot):
     assert bot.ask("Do we have NRI policyholders?").problem_id == "PS-087"
+
+
+# -- a two-part question -----------------------------------------------------
+
+@pytest.mark.parametrize("question", [
+    "Which state has the highest APE and what is its lapse rate?",
+    "Which branches have the worst renewal collection?",
+    "Which customers hold more than one policy and do they lapse less?",
+])
+def test_question_the_match_only_half_answers_is_held(bot, question):
+    # Each of these once routed to an analysis covering one part and answered it
+    # confidently, dropping the rest.
+    assert bot.ask(question).outcome == CLARIFY
+
+
+def test_clarification_offers_the_analysis_that_covers_the_whole_question(bot):
+    response = bot.ask(
+        "Do agents with high complaint rates also sell policies that lapse more?")
+    assert response.outcome == CLARIFY
+    assert response.suggestions[0]["problem_id"] == "PS-074"
+
+
+def test_close_runner_up_that_covers_the_question_is_used(bot):
+    # The best score was the product lapse ranking, which says nothing about claims.
+    assert bot.ask("Which product has the most death claims?").problem_id == "PS-059"
+
+
+def test_every_catalogue_example_is_covered_by_its_own_analysis(bot):
+    from src.router.normalizer import normalize
+    matcher = bot.router.matcher
+    flagged = [(ps.id, q) for ps in bot.registry.all()
+               for q in [ps.problem_statement] + list(ps.example_queries)
+               if matcher.uncovered(normalize(q), ps.id)]
+    assert not flagged

@@ -152,6 +152,30 @@ INTENT_CUES: List[tuple] = [
     ({"seasonal", "seasonality", "by month of"}, {"Seasonality", "Trend"}),
 ]
 
+# What a question measures, and the words that show a PS is about that measure.
+# Scoring rewards a PS for matching most of a question; coverage asks whether it
+# answers all of it. "Which state has the highest APE and what is its lapse rate"
+# scores well against a state lapse ranking, which says nothing about APE.
+# Each entry: question triggers -> words a PS's statement, examples or concepts
+# must contain (or, for "claims", the table it must read).
+MEASURE_FAMILIES: Dict[str, tuple] = {
+    "claims": ({"claim", "claims", "death", "deaths", "died", "mortality",
+                "settlement", "settled", "payout"}, {"table:claims"}),
+    "conduct": ({"complaint", "complaints", "conduct", "misconduct", "pivc", "rcu",
+                 "freelook"}, {"complaint", "complaints", "conduct", "misconduct", "pivc",
+                               "rcu", "freelook", "quality", "risk"}),
+    "premium": ({"ape"}, {"ape", "premium", "business", "value", "production"}),
+    "lapse": ({"lapse", "lapsed", "lapses", "lapsing", "cancel", "cancelling",
+               "cancelled", "canceling", "canceled"},
+              {"lapse", "lapsed", "lapses", "lapsing", "persistency", "retention",
+               "losing", "inforce", "status"}),
+    "surrender": ({"surrender", "surrendered", "surrenders"},
+                  {"surrender", "surrendered", "surrenders", "status", "exit"}),
+    "persistency": ({"persistency", "renewal", "renewals", "collection"},
+                    {"persistency", "renewal", "renewals", "collection", "retention",
+                     "paid", "lapse"}),
+}
+
 # Vocabulary that points at a table, used as a weak domain signal.
 TABLE_TERMS: Dict[str, Set[str]] = {
     "policy": {"policy", "policies", "product", "plan", "premium", "ape", "sum_assured",
@@ -346,8 +370,15 @@ class PSMatcher:
         for text in [ps.problem_statement] + list(ps.example_queries):
             searchable |= content_terms(tokenize(clean(text).lower()))
 
+        about = set(concept_terms)
+        for text in [ps.problem_statement] + list(ps.example_queries):
+            about |= content_terms(tokenize(expand_aliases(clean(text)).lower()))
+        about |= {"table:" + t for t in ps.relevant_tables}
+
         return {
             "ps": ps,
+            "about": about,
+            "sectioned": bool(plan.get("sections")),
             "searchable": searchable,
             "dimensions": dimensions,
             "keyed_dimensions": keyed_dimensions,
@@ -481,6 +512,35 @@ class PSMatcher:
             business_domain=ps.business_domain,
             analysis_tier=ps.analysis_tier,
         )
+
+    def uncovered(self, query: NormalizedQuery, problem_id: str) -> List[str]:
+        """What the question asks for that this PS does not answer.
+
+        Two things are checked: each measure the question names (claims, APE,
+        conduct, lapse ...) must be something the PS is about, and each grouping the
+        question explicitly requests ("by agent", "which branches") must be one the
+        PS groups or keys on. Sectioned executive PSs span every domain and are not
+        held to the grouping check.
+        """
+        prepared = self._prepared[problem_id]
+        terms = query.terms
+        missing = []
+        for name, (triggers, evidence) in MEASURE_FAMILIES.items():
+            if terms & triggers and not prepared["about"] & evidence:
+                missing.append(name)
+        offered = prepared["dimensions"] | prepared["keyed_dimensions"]
+        if "agent_id" in prepared["ps"].record.get("parameters", {}):
+            offered = offered | {"agent"}
+        # Only a PS that groups on a recognised dimension can be shown to group on
+        # the wrong one; some group on date or band columns the vocabulary does not
+        # name. "Customer" usually names the subject ("by customer age"), not a
+        # grouping, so it is not held to this.
+        if offered and not prepared["sectioned"]:
+            asked = (_requested_dimensions(query.cleaned, terms)
+                     - VALUE_DIMENSIONS - {"client"})
+            if asked and not asked & offered:
+                missing.extend("by " + d for d in sorted(asked))
+        return missing
 
     @staticmethod
     def _entity_fit(ps: ProblemStatement, entity_kinds: Set[str]) -> float:
