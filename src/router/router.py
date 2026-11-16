@@ -208,8 +208,11 @@ class QueryRouter:
             best = covering[0]
             candidates = covering[:MAX_CANDIDATES]
 
-        # 6. Two candidates too close to separate: ask rather than guess.
-        runner_up = candidates[1] if len(candidates) > 1 else None
+        # 6. Two candidates too close to separate: ask rather than guess. A runner-up
+        #    that would answer only part of the question is not a real alternative.
+        rivals = [c for c in candidates[1:]
+                  if not self.matcher.uncovered(normalized, c.problem_id)]
+        runner_up = rivals[0] if rivals else None
         if runner_up and (best.score - runner_up.score) < AMBIGUITY_MARGIN:
             return RoutingDecision(
                 question=question, outcome=AMBIGUOUS,

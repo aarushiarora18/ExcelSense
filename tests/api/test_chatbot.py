@@ -390,3 +390,59 @@ def test_every_catalogue_example_is_covered_by_its_own_analysis(bot):
                for q in [ps.problem_statement] + list(ps.example_queries)
                if matcher.uncovered(normalize(q), ps.id)]
     assert not flagged
+
+
+# -- business "how" questions -------------------------------------------------
+# None of these wordings is a catalogue example. Each was refused, held for
+# clarification or answered by the wrong analysis before the "how" handling.
+
+@pytest.mark.parametrize("question,expected", [
+    # what to do about it -> where the problem sits and what goes with it
+    ("How do we cut our lapse rate?", "PS-040"),
+    ("What can we do to lower surrenders?", "PS-043"),
+    ("How should we prioritise retention efforts?", "PS-100"),
+    # how one thing relates to another -> the split by that thing
+    ("How does income affect lapse?", "PS-038"),
+    ("How does occupation relate to lapses?", "PS-037"),
+    ("How do claims vary by age?", "PS-064"),
+    ("How do older customers compare with younger ones on lapse?", "PS-036"),
+    ("How does persistency change with policy year?", "PS-045"),
+    ("How do surrenders compare across products?", "PS-042"),
+    ("How does lapse differ between ULIP and traditional policies?", "PS-016"),
+    # how fast -> a duration, not a rate
+    ("How quickly are claims settled?", "PS-056"),
+    ("How late are renewals being paid?", "PS-046"),
+    # how is it doing -> performance or overview
+    ("How healthy is the book?", "PS-009"),
+    ("How are we doing overall?", "PS-009"),
+    ("How dependent are we on our top agents?", "PS-070"),
+])
+def test_business_how_questions_route_to_the_analysis_that_answers_them(
+        bot, question, expected):
+    response = bot.ask(question)
+    assert response.outcome == ANSWERED, response.answer
+    assert response.problem_id == expected
+
+
+def test_a_prescriptive_answer_says_the_data_shows_where_not_what(bot):
+    response = bot.ask("How can we reduce lapses?")
+    assert response.outcome == ANSWERED
+    assert response.answer.startswith("The data shows where to act, not which action")
+    plain = bot.ask("How does lapse rate vary by product?")
+    assert "not which action" not in plain.answer
+
+
+@pytest.mark.parametrize("question", [
+    # No analysis splits premium by gender or lapse by term band.
+    "How does gender affect premium?",
+    "How does policy term relate to lapse?",
+])
+def test_how_question_no_analysis_fully_answers_is_held(bot, question):
+    assert bot.ask(question).outcome == CLARIFY
+
+
+def test_stop_is_not_read_as_top():
+    from src.router.matcher import _requested_dimensions
+    from src.router.normalizer import normalize
+    query = normalize("How do we stop customers surrendering?")
+    assert "client" not in _requested_dimensions(query.cleaned, query.terms)

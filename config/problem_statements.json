@@ -1,6 +1,6 @@
 {
   "catalogue_version": "1.0.0",
-  "generated_at_utc": "2026-11-16T06:10:53Z",
+  "generated_at_utc": "2026-11-16T08:07:56Z",
   "generated_by": "scripts/build_ps_catalogue.py",
   "data_contract_version": "1.0.0",
   "grounded_in": "Talk_to_Data_PoC_Documentation_Metadata_V4",
@@ -2207,7 +2207,8 @@
         "Full product performance table",
         "How does each product perform?",
         "Rank products on everything",
-        "Product league table"
+        "Product league table",
+        "How are our products performing?"
       ],
       "relevant_tables": [
         "policy",
@@ -4883,7 +4884,10 @@
         "Root cause of lapses",
         "Explain our lapse rate",
         "What factors are associated with lapse?",
-        "Lapse driver analysis"
+        "Lapse driver analysis",
+        "How can we reduce lapses?",
+        "How does premium size relate to lapse?",
+        "How do we bring the lapse rate down?"
       ],
       "relevant_tables": [
         "policy",
@@ -6310,7 +6314,8 @@
         "What is wrong with the 37th month bucket?",
         "Explain weak late-stage persistency",
         "Why do older policies stop paying?",
-        "Diagnose the worst persistency bucket"
+        "Diagnose the worst persistency bucket",
+        "How can we improve renewal collection?"
       ],
       "relevant_tables": [
         "persistency",
@@ -8825,7 +8830,8 @@
         "What makes the top agent successful?",
         "How is agent 977337 outperforming?",
         "Explain the top agent's performance",
-        "Why does this agent have the highest persistency?"
+        "Why does this agent have the highest persistency?",
+        "How can we improve agent performance?"
       ],
       "relevant_tables": [
         "policy",
@@ -9703,7 +9709,8 @@
         "Composite agent rating",
         "Rank agents on overall quality",
         "Which agents are highest risk overall?",
-        "Overall agent quality ranking"
+        "Overall agent quality ranking",
+        "How are our agents performing?"
       ],
       "relevant_tables": [
         "sales",
@@ -12387,7 +12394,8 @@
         "Which branches are lagging?",
         "Best and worst branches",
         "Branch quality analysis",
-        "Branch-wise metrics"
+        "Branch-wise metrics",
+        "How are our branches doing?"
       ],
       "relevant_tables": [
         "policy",

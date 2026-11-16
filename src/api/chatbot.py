@@ -21,6 +21,7 @@ from src.evidence import EvidenceTable, build_tables
 from src.llm import Answer, Summarizer
 from src.llm.client import LLMClient
 from src.llm.composer import focus_sentence
+from src.router.normalizer import is_prescriptive
 from src.ps.evidence import EvidencePackage
 from src.ps.executor import PSExecutor
 from src.ps.registry import PSRegistry, get_registry
@@ -44,6 +45,8 @@ from src.security.guards import (
 from src.visualization import ChartSpec, build_chart
 
 CHATBOT_VERSION = "1.0.0"
+PRESCRIPTIVE_LEAD = ("The data shows where to act, not which action will work; "
+                     "this is what goes with the problem.")
 
 # What kind of turn the user got back.
 ANSWERED = "answered"
@@ -246,6 +249,10 @@ class Chatbot:
             focus = focus_sentence(evidence, states[0])
             if focus:
                 summary.text = "{} {}".format(focus, summary.text)
+        if is_prescriptive(question) and evidence.is_sufficient:
+            # "How can we reduce lapses?" The data records outcomes, never the effect
+            # of an intervention, so the answer says where to look, not what will work.
+            summary.text = "{} {}".format(PRESCRIPTIVE_LEAD, summary.text)
 
         if not evidence.is_sufficient:
             response = ChatResponse(

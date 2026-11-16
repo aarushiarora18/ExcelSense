@@ -4656,8 +4656,8 @@
   },
   "routing": {
     "example_query_count": 533,
-    "correct": 516,
-    "accuracy_pct": 96.81,
+    "correct": 521,
+    "accuracy_pct": 97.75,
     "routes": {
       "How many policies are there?": {
         "expected": "PS-001",
@@ -5942,10 +5942,10 @@
       },
       "Lapse by customer age band": {
         "expected": "PS-036",
-        "outcome": "ambiguous",
-        "problem_id": null,
+        "outcome": "routed",
+        "problem_id": "PS-036",
         "confidence": 0.506,
-        "correct": false
+        "correct": true
       },
       "Lapse by occupation": {
         "expected": "PS-037",
@@ -6075,10 +6075,10 @@
       },
       "Explain our lapse rate": {
         "expected": "PS-040",
-        "outcome": "ambiguous",
-        "problem_id": null,
-        "confidence": 0.6783,
-        "correct": false
+        "outcome": "routed",
+        "problem_id": "PS-040",
+        "confidence": 0.7799,
+        "correct": true
       },
       "What factors are associated with lapse?": {
         "expected": "PS-040",
@@ -6782,17 +6782,17 @@
       },
       "Is the claim the same as sum assured?": {
         "expected": "PS-060",
-        "outcome": "ambiguous",
-        "problem_id": null,
+        "outcome": "routed",
+        "problem_id": "PS-060",
         "confidence": 0.6011,
-        "correct": false
+        "correct": true
       },
       "Claim to sum assured ratio": {
         "expected": "PS-060",
-        "outcome": "ambiguous",
-        "problem_id": null,
+        "outcome": "routed",
+        "problem_id": "PS-060",
         "confidence": 0.6003,
-        "correct": false
+        "correct": true
       },
       "Cover versus payout": {
         "expected": "PS-060",
@@ -7161,9 +7161,9 @@
       "How dependent are we on top agents?": {
         "expected": "PS-070",
         "outcome": "routed",
-        "problem_id": "PS-066",
-        "confidence": 0.6731,
-        "correct": false
+        "problem_id": "PS-070",
+        "confidence": 0.7678,
+        "correct": true
       },
       "Active versus inactive agents": {
         "expected": "PS-071",

@@ -124,6 +124,87 @@ follow-up such as "What is their lapse rate?" after asking about an agent still
 returns the portfolio rate. Real multi-hop answers (combining two analyses) are not
 supported; these questions are now refused rather than answered.
 
+### 6. Business "how" questions were refused or misrouted
+
+**Problem.** Of 25 business questions starting with "how", about half failed. A second
+set of 25 differently worded questions found the same gaps:
+
+| Question | Previously |
+|---|---|
+| How can we reduce lapses? | refused |
+| How do we cut our lapse rate? | the overall lapse rate (10.95%) |
+| How does occupation relate to lapses? | agent conduct quartiles |
+| How does premium size relate to lapse? | agent conduct quartiles |
+| How quickly are claims settled? | the settlement *rate* (99.25%), not the time taken |
+| How are our branches doing? | held for clarification |
+| How dependent are we on our top agents? | the top agents by volume, not the dependence |
+| How do surrenders compare across products? | held, with no surrender analysis suggested |
+
+The causes, all in `src/router/`:
+- "How does/do" counted as a request for a comparison, which marked down the
+  split-by analyses that "how does lapse vary by age" needs.
+- Action verbs ("reduce", "improve", "stop", "cut") carried no signal, so "how can we
+  reduce lapses" either matched nothing or matched the plain lapse rate.
+- "Doing" and "performing" were discarded. "How quickly" and "how fast" did not point
+  at durations, and the vocabulary did not recognise "lapses", "surrenders",
+  "settling", "older", "younger" or "policy year".
+- Grouping phrases were matched as substrings, so "how do we **stop customers**"
+  matched the pattern "top customers" and was read as "rank customers".
+- Coverage (fix #5) did not know the lapse driver scan compares APE, or that the
+  traditional-vs-ULIP comparison reports a lapse rate.
+
+**Fix.**
+- `normalizer.py`:
+  - added the missing vocabulary;
+  - folded action verbs together ("cut", "lower" → "reduce");
+  - added `is_prescriptive()`, which recognises "how can we / what can we do to"
+    followed by an action verb.
+- `matcher.py`:
+  - **Prescriptive questions:** these now decide the answer's shape outright, as "why"
+    does. They are answered by driver, diagnostic and prioritisation analyses.
+  - **Relationship words:** "vary", "affect", "relate" and "differ" are now their own
+    cue. A dimension named next to one of them ("how does *income* affect lapse") is
+    treated as the grouping asked for, but only against analyses that group by
+    something. With no dimension named, the cue looks for a driver or cohort comparison.
+  - **"How does/do":** still asks for a comparison when no relationship word is present.
+  - **Speed:** "how quickly", "how fast" and "how late" now look for a computed
+    duration.
+  - **Performance:** "how are X doing / performing" now looks for performance and
+    scorecard analyses. "Performance" on its own is still held for clarification.
+  - **Overview:** "how healthy / how risky / how are we doing overall" go to the
+    executive overview.
+  - **Grouping patterns:** these now match whole words only.
+  - **Coverage:** an analysis now counts as covering what it ranks by, the rates a
+    comparison reports, and the attributes a driver scan compares.
+- `router.py`: a close runner-up that would answer only part of the question no
+  longer makes the decision "too close to call".
+- `chatbot.py`: answers to prescriptive questions begin *"The data shows where to act,
+  not which action will work"*. The data records outcomes, never the effect of an
+  action, so the answer says where to look rather than implying a remedy.
+- `normalizer.py`: "which channel" is refused like "by channel", since CHANNEL is
+  "Banca" for every policy.
+- Catalogue examples added: "How can we reduce lapses?", "How does premium size relate
+  to lapse?", "How do we bring the lapse rate down?" (PS-040); "How can we improve
+  renewal collection?" (PS-050); "How can we improve agent performance?" (PS-068);
+  "How are our agents performing?" (PS-073); "How are our branches doing?" (PS-089);
+  "How are our products performing?" (PS-020).
+
+**Result.**
+- **Business "how" questions:** 21 of 25 in each set now route to the analysis that
+  answers them. The second set was worded independently and was not used for tuning
+  beyond the general rules above. The rest are held for clarification because no
+  single analysis answers them ("how does gender affect premium", "how does policy
+  term relate to lapse"), or refused because the data does not exist ("how does agent
+  tenure affect lapse").
+- **Routing baseline:** catalogue example questions routed correctly rose from 516 to
+  521 of 533 (96.81% → 97.75%). Five questions were previously held or misrouted:
+  "How dependent are we on top agents?", "Explain our lapse rate", "Lapse by customer
+  age band", "Claim to sum assured ratio" and "Is the claim the same as sum assured?".
+  Their baseline entries were updated individually; no other entry changed.
+
+**Not covered.** "How can I grow APE?" and "How much APE did we write last year?" are
+still held or refused. No analysis explains growth, and none filters to a single year.
+
 ## Tests
 
 - Added to `tests/api/test_chatbot.py`:
@@ -134,6 +215,11 @@ supported; these questions are now refused rather than answered.
   - the clarification offers the analysis that covers the whole question
   - a close runner-up that covers the whole question is used
   - every catalogue example question is covered by its own analysis
+  - 15 business "how" questions, none of them catalogue examples, route to the
+    analysis that answers them
+  - a prescriptive answer says the data shows where to act, not what will work
+  - "how" questions no analysis fully answers are held for clarification
+  - "stop customers" is not read as "top customers"
 - The full suite passes, including the routing regression baseline
   (`tests/regression/test_routing_regression.py`).
 

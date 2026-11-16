@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import difflib
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Set
 
 from src.ps.registry import ProblemStatement, PSRegistry
 from src.router.normalizer import (
-    STOPWORDS, NormalizedQuery, clean, content_terms, expand_aliases, tokenize)
+    STOPWORDS, NormalizedQuery, clean, content_terms, expand_aliases, is_prescriptive,
+    tokenize)
 
 # Component weights. They sum to 1.0 so a score reads as a confidence.
 WEIGHTS = {
@@ -42,7 +44,8 @@ DIMENSION_TERMS: Dict[str, Set[str]] = {
     "occupation": {"occupation", "occupations", "profession", "professions", "job"},
     "education": {"education", "qualification", "educated"},
     "gender": {"gender", "male", "female", "men", "women"},
-    "age": {"age", "ages", "old", "young", "age_band", "demographic"},
+    "age": {"age", "ages", "old", "young", "older", "younger", "age_band",
+            "demographic"},
     "income": {"income", "earnings", "salary", "affluent", "earning"},
     "status": {"status", "statuses", "lapse", "lapsed", "surrender", "surrendered",
                "inforce", "active", "death", "died", "deceased"},
@@ -100,10 +103,15 @@ DIMENSION_COLUMNS: Dict[str, Set[str]] = {
 DECISIVE_CUES: List[tuple] = [
     ({"why", "explain", "root cause", "diagnose", "what is driving", "what drives",
       "reason for"}, {"Diagnostic", "Driver"}),
-    ({"how concentrated", "concentration", "dependent on", "reliance on"},
+    ({"how concentrated", "concentration", "dependent on", "reliance on",
+      "how dependent", "how reliant", "rely on"},
      {"Concentration"}),
     ({"snapshot", "overview", "brief me", "business review", "dashboard",
-      "complete picture", "summarise", "summarize"}, {"Overview"}),
+      "complete picture", "summarise", "summarize", "how is the business",
+      "how is business", "business performing", "business doing", "how are we performing",
+      "portfolio performing", "portfolio doing", "how risky", "how healthy",
+      "doing overall", "performing overall",
+      "health of the"}, {"Overview"}),
     ({"reconcile", "reconciliation", "data quality", "cannot answer", "can this data",
       "not answer", "limitations"}, {"Integrity", "Reconciliation"}),
     ({"tell me about policy", "details for", "look up", "full record", "policy details"},
@@ -123,9 +131,20 @@ TIER_CUES: Dict[str, Set[str]] = {
                             "segmentation", "complete picture", "act on", "remediation",
                             "composite", "quality score", "biggest impact", "losing",
                             "leaking", "costing us", "value loss", "at risk",
-                            "worry about"},
+                            "worry about", "prioritis", "prioritiz"},
     "descriptive": {"how many", "what is the total", "list", "show me the"},
 }
+
+# Speed is a computed duration summarised as a distribution or an average. "How
+# long" is left out: "how long are our policies" asks for the term, not a speed.
+SPEED_CUES = {"how quickly", "how fast", "how soon", "how late", "turnaround",
+              "take to"}
+
+HOW_DO_CUES = {"how do", "how does"}
+
+# "How are our branches doing": performance across several measures at once.
+PERFORMANCE_CUES = {"performing", "performance", "doing", "perform "}
+PERFORMANCE_WORDS = {"performing", "performance", "perform", "performs", "doing"}
 
 # Softer cues, paired with every intent token that would satisfy them. A PS declaring
 # GroupBy/Ranking/Count answers "which branches write the most business" perfectly
@@ -141,8 +160,16 @@ INTENT_CUES: List[tuple] = [
     ({"top", "best", "highest", "largest", "biggest", "leading", "most"},
      {"TopN", "Ranking", "Max", "Sum"}),
     ({"worst", "lowest", "bottom", "least"}, {"BottomN", "Ranking", "Min"}),
-    ({"compare", "versus", " vs ", "against", "difference between", "how do", "how does"},
-     {"Comparison"}),
+    ({"compare", "versus", " vs ", "against", "difference between"}, {"Comparison"}),
+    (HOW_DO_CUES, {"Comparison"}),
+    # "How does lapse vary by age", "how does payment mode affect renewals": a
+    # relationship, answered by a split, a comparison or a driver analysis alike.
+    # When one of these is present "how does/do" is skipped: demanding a Comparison
+    # there marked every group-by analysis down.
+    ({"vary", "varies", "differ", "change with", "changes with", "relate", "relates",
+      "related to", "affect", "impact", "influence", "depend on", "linked to",
+      "associated with"},
+     {"GroupBy", "Comparison", "Ratio", "Distribution", "Cohort", "Driver", "Bucketing"}),
     ({"distribution", "breakdown", "spread", "split", "mix"},
      {"Distribution", "Bucketing", "Profile"}),
     ({"band", "bands", "buckets", "grouped"}, {"Bucketing", "Distribution"}),
@@ -150,7 +177,15 @@ INTENT_CUES: List[tuple] = [
      {"Profile", "Distribution", "Overview"}),
     ({"unusual", "suspicious", "flag", "anomaly"}, {"Anomaly", "Outliers"}),
     ({"seasonal", "seasonality", "by month of"}, {"Seasonality", "Trend"}),
+    # Speed is a duration. "How quickly are claims settled" is not the settlement rate.
+    (SPEED_CUES, {"Derived-Metric"}),
+    (PERFORMANCE_CUES, {"Comparison", "Profile", "Overview", "Diagnostic", "Ranking"}),
 ]
+
+# What a prescriptive question ("how can we reduce lapses") is best answered by, and
+# how well: a driver analysis says what goes with the problem; a profile or diagnostic
+# says where it sits; a plain comparison is only partly an answer.
+PRESCRIPTIVE_FIT = {"Driver": 1.0, "Diagnostic": 1.0, "Profile": 1.0, "Comparison": 0.5}
 
 # What a question measures, and the words that show a PS is about that measure.
 # Scoring rewards a PS for matching most of a question; coverage asks whether it
@@ -164,7 +199,7 @@ MEASURE_FAMILIES: Dict[str, tuple] = {
     "conduct": ({"complaint", "complaints", "conduct", "misconduct", "pivc", "rcu",
                  "freelook"}, {"complaint", "complaints", "conduct", "misconduct", "pivc",
                                "rcu", "freelook", "quality", "risk"}),
-    "premium": ({"ape"}, {"ape", "premium", "business", "value", "production"}),
+    "premium": ({"ape", "premium"}, {"ape", "premium", "business", "value", "production"}),
     "lapse": ({"lapse", "lapsed", "lapses", "lapsing", "cancel", "cancelling",
                "cancelled", "canceling", "canceled"},
               {"lapse", "lapsed", "lapses", "lapsing", "persistency", "retention",
@@ -254,6 +289,27 @@ def _phrase_overlap(query_text: str, targets: Sequence[str]) -> float:
     return best
 
 
+# "How does occupation relate to lapse": naming a dimension alongside one of these
+# asks for the split as plainly as "by occupation" does.
+RELATIONSHIP_WORDS = re.compile(
+    r"\b(?:vary|varies|differ|differs|relate|relates|related to|affect|affects|"
+    r"impact|impacts|influence|influences|depend on|depends on|linked to|"
+    r"associated with)\b")
+
+
+def _related_dimensions(cleaned: str, terms: Set[str]) -> Set[str]:
+    """Dimensions named alongside a relationship word ("how does income affect lapse").
+
+    Softer than an explicit grouping: in "how do inactive agents differ" the agents
+    are the subject, not a split. So this only counts against a PS that does group,
+    and "month" in "13th month" is a bucket name, not a request for a time series.
+    """
+    if not RELATIONSHIP_WORDS.search(cleaned):
+        return set()
+    return ({name for name, words in DIMENSION_TERMS.items() if terms & words}
+            - VALUE_DIMENSIONS - {"client", "period"})
+
+
 def _requested_dimensions(cleaned: str, terms: Set[str]) -> Set[str]:
     """Dimensions the question asks to group by, not merely mentions."""
     requested = set()
@@ -261,7 +317,9 @@ def _requested_dimensions(cleaned: str, terms: Set[str]) -> Set[str]:
         if not (terms & words):
             continue
         for word in words & terms:
-            if any(pattern.format(word) in cleaned for pattern in GROUPING_PATTERNS):
+            # Whole words only: "stop customers" is not "top customers".
+            if any(re.search(r"\b{}\b".format(re.escape(pattern.format(word))), cleaned)
+                   for pattern in GROUPING_PATTERNS):
                 requested.add(name)
                 break
     return requested
@@ -360,6 +418,9 @@ class PSMatcher:
                 keyed.add(str(spec["column"]).lower())
         if plan.get("column"):
             keyed.add(str(plan["column"]).lower())
+        if (plan.get("split") or {}).get("column"):
+            # Cohort comparisons split on a column: lapsed against in-force.
+            keyed.add(str(plan["split"]["column"]).lower())
 
         dimensions = {name for name, columns in DIMENSION_COLUMNS.items()
                       if grouping_keys & columns}
@@ -374,6 +435,22 @@ class PSMatcher:
         for text in [ps.problem_statement] + list(ps.example_queries):
             about |= content_terms(tokenize(expand_aliases(clean(text)).lower()))
         about |= {"table:" + t for t in ps.relevant_tables}
+        # A comparison sets all of its rates side by side, whatever its title says:
+        # "compare traditional and ULIP across key metrics" answers the lapse
+        # question. A ranking answers only for what it ranks by; a lapse column in a
+        # ranking by APE does not say which state lapses most.
+        computed = [plan.get("rank_by")]
+        if "Comparison" in ps.intent_type.split("/"):
+            computed += list(plan.get("rates") or {})
+        for name in computed:
+            if isinstance(name, str) and not name.startswith("$"):
+                about |= content_terms(tokenize(name.replace("_", " ").lower()))
+        # A cohort comparison is about every attribute it compares: the lapse driver
+        # scan sets APE, age and agent quality side by side for lapsed and in-force.
+        for column in (plan.get("numeric_attributes") or []) + \
+                (plan.get("categorical_attributes") or []):
+            about |= content_terms(tokenize(
+                expand_aliases(clean(column.split("_", 1)[-1].replace(".", " ")))))
 
         return {
             "ps": ps,
@@ -430,6 +507,7 @@ class PSMatcher:
 
         cue_text = query.cleaned
         measures = prepared["measures"]
+        prescriptive = is_prescriptive(query.raw)
 
         decisive = set()
         for triggers, accepted in DECISIVE_CUES:
@@ -439,18 +517,49 @@ class PSMatcher:
             # A decisive cue settles the shape of the answer. Offering it scores near
             # full; not offering it scores near zero, however similar the wording.
             intent_score = 1.0 if decisive & measures else 0.05
+        elif prescriptive:
+            # "How do we cut our lapse rate" is not answered by the lapse rate, however
+            # closely the words match. It wants where the problem sits and what goes
+            # with it, so it settles the shape as decisively as "why" does.
+            intent_score = max([PRESCRIPTIVE_FIT.get(m, 0.0) for m in measures] + [0.05])
         else:
-            matched, satisfied = 0, 0
+            # "Compare surrenders across products", "older customers against younger
+            # ones": a comparison between the groups of a dimension is a split.
+            grouping = bool(_requested_dimensions(query.cleaned, terms) or (
+                {name for name, words in DIMENSION_TERMS.items() if terms & words}
+                - VALUE_DIMENSIONS - {"client"}))
+            related = bool(RELATIONSHIP_WORDS.search(cue_text))
+            matched, satisfied = 0, 0.0
             for triggers, accepted in INTENT_CUES:
+                if triggers is PERFORMANCE_CUES and not terms - PERFORMANCE_WORDS:
+                    # "Performance" alone names no subject; it stays a question to ask.
+                    continue
+                if triggers is HOW_DO_CUES and related:
+                    # "How does X vary by Y" is a relationship, cued on its own.
+                    continue
                 if any(trigger in cue_text for trigger in triggers):
                     matched += 1
-                    if accepted & measures:
+                    if "Driver" in accepted and not grouping:
+                        # "How does premium size relate to lapse": an attribute set
+                        # against an outcome, with no grouping to split by. A driver
+                        # or cohort comparison answers that; a ranking does not.
+                        accepted = {"Driver", "Comparison"}
+                    elif (accepted == {"Comparison"} and grouping
+                          and triggers is not HOW_DO_CUES):
+                        # "Compare surrenders across products" asks for a split.
+                        accepted = accepted | {"GroupBy"}
+                    if triggers is SPEED_CUES:
+                        satisfied += bool("Average" in measures or (
+                            "Derived-Metric" in measures and "Distribution" in measures))
+                    elif accepted & measures:
                         satisfied += 1
             intent_score = (satisfied / matched) if matched else 0.35
 
         asked = _requested_dimensions(query.cleaned, terms)
         mentioned = {name for name, words in DIMENSION_TERMS.items() if terms & words}
         offered = prepared["dimensions"]
+        if not asked and offered:
+            asked = _related_dimensions(query.cleaned, terms)
         if not asked:
             # A value-bearing mention still tilts: "how many unit linked policies"
             # favours the TRAD/ULIP split. Naming a dimension that merely describes
@@ -481,6 +590,8 @@ class PSMatcher:
 
         wanted_tiers = {tier for tier, cues in TIER_CUES.items()
                         if any(cue in cue_text for cue in cues)}
+        if prescriptive:
+            wanted_tiers |= {"diagnostic", "multi_step_business"}
         if wanted_tiers:
             tier_score = 1.0 if ps.analysis_tier in wanted_tiers else 0.1
         else:
@@ -536,7 +647,8 @@ class PSMatcher:
         # name. "Customer" usually names the subject ("by customer age"), not a
         # grouping, so it is not held to this.
         if offered and not prepared["sectioned"]:
-            asked = (_requested_dimensions(query.cleaned, terms)
+            asked = ((_requested_dimensions(query.cleaned, terms)
+                      or _related_dimensions(query.cleaned, terms))
                      - VALUE_DIMENSIONS - {"client"})
             if asked and not asked & offered:
                 missing.extend("by " + d for d in sorted(asked))

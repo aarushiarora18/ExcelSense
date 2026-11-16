@@ -1,6 +1,6 @@
 {
   "catalogue_version": "1.0.0",
-  "generated_at_utc": "2026-11-16T06:10:53Z",
+  "generated_at_utc": "2026-11-16T08:07:56Z",
   "generated_by": "scripts/build_ps_catalogue.py",
   "data_contract_version": "1.0.0",
   "grounded_in": "Talk_to_Data_PoC_Documentation_Metadata_V4",
@@ -940,7 +940,8 @@
         "Full product performance table",
         "How does each product perform?",
         "Rank products on everything",
-        "Product league table"
+        "Product league table",
+        "How are our products performing?"
       ],
       "relevant_tables": [
         "policy",

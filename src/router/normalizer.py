@@ -42,6 +42,9 @@ ALIASES: Dict[str, str] = {
     "active policies": "inforce active", "live policies": "inforce active",
     "lapsed policies": "lapse lapsed", "lapse rate": "lapse rate",
     "fallen off": "lapse lapsed", "stopped paying": "lapse lapsed",
+    "lapses": "lapse lapsed", "lapsing": "lapse lapsed",
+    "renewals": "renewal",
+    "surrenders": "surrender surrendered", "surrendering": "surrender surrendered",
     "surrendered policies": "surrender surrendered", "cashed in": "surrender surrendered",
     "early exit": "surrender surrendered",
 
@@ -49,6 +52,7 @@ ALIASES: Dict[str, str] = {
     "persistency": "persistency renewal", "renewal rate": "persistency renewal rate",
     "13th month": "persistency bucket 13th", "25th month": "persistency bucket 25th",
     "37th month": "persistency bucket 37th",
+    "policy year": "persistency bucket", "policy years": "persistency bucket",
     "collection": "renewal collection", "collections": "renewal collection",
     "retention": "retention persistency", "stickiness": "retention persistency",
 
@@ -74,6 +78,7 @@ ALIASES: Dict[str, str] = {
     "death claim": "claim death", "death claims": "claim death",
     "payout": "claim payout paid", "payouts": "claim payout paid",
     "settlement": "claim settlement settled", "settled": "claim settlement settled",
+    "settling": "claim settlement settled",
     "cause of death": "cause death mortality", "mortality": "cause death mortality",
 
     # Deliberately absent: superlatives ("top", "best", "largest"), comparison words,
@@ -94,6 +99,17 @@ ALIASES: Dict[str, str] = {
     "how big": "count number size",
     "how large": "count number size",
     "how old": "age profile demographic",
+    "older": "age", "younger": "age", "elderly": "age",
+    # "How are our branches doing", "how is the business performing": performance
+    # is the subject. "doing" stays a stopword so the filler alone never routes.
+    "performing": "performance", "perform": "performance", "performs": "performance",
+    "doing": "performance",
+    # Action verbs, folded so "cut lapses" matches "reduce lapses".
+    "cut": "reduce", "lower": "reduce", "bring down": "reduce", "decrease": "reduce",
+    "boost": "increase", "raise": "increase", "lift": "increase",
+    # Speed questions ask for a duration, not a rate.
+    "how quickly": "how long take time", "how fast": "how long take time",
+    "how soon": "how long take time", "turnaround": "how long take time",
     "distinct": "distinct unique count",
     "unique": "distinct unique count",
     "typically pay": "average premium ape",
@@ -101,6 +117,9 @@ ALIASES: Dict[str, str] = {
     "value segmentation": "customer value segment tier",
     "remediation": "agent conduct quality action",
     "retention effort": "retention persistency lapse",
+    "retention efforts": "retention persistency lapse effort",
+    "premium size": "ape premium", "premium level": "ape premium",
+    "productivity": "production volume",
 
     # integrity
     "data quality": "data quality integrity", "reconcile": "reconciliation integrity",
@@ -163,6 +182,7 @@ UNSUPPORTED_CONCEPTS: Dict[str, str] = {
     "channel comparison": "CHANNEL is 'Banca' for every policy, so it cannot be compared",
     "compare channels": "CHANNEL is 'Banca' for every policy, so it cannot be compared",
     "by channel": "CHANNEL is 'Banca' for every policy, so it cannot be compared",
+    "which channel": "CHANNEL is 'Banca' for every policy, so it cannot be compared",
     "complaint case": "only an aggregate agent-level complaint rate exists, with no case records",
     "customer service": "no servicing or contact history exists",
     "call centre": "no servicing or contact history exists",
@@ -183,6 +203,23 @@ STOPWORDS: Set[str] = {
 }
 
 _WORD = re.compile(r"[a-z0-9_.]+")
+
+# "How can we reduce lapses?", "how do we stop customers surrendering?". These ask
+# for an action. The data records outcomes, not the effect of any action, so the
+# best it can do is show where the problem sits and what goes with it: the driver,
+# diagnostic and prioritisation analyses.
+_ACTION_VERBS = (r"reduce|lower|cut|decrease|minimi[sz]e|prevent|stop|avoid|tackle|fix|"
+                 r"improve|increase|raise|boost|grow|lift|maximi[sz]e|retain|protect|"
+                 r"strengthen|recover|speed up|win back")
+_PRESCRIPTIVE = re.compile(
+    r"\b(?:how (?:can|could|do|should|would|might|will) (?:we|i|you|the business)|"
+    r"how to|ways? to|steps to|what (?:can|should|could) (?:we|i) do to|"
+    r"actions? to|levers? to|strategy to|strategies to)\b.*\b(?:{})\b".format(_ACTION_VERBS))
+
+
+def is_prescriptive(text: str) -> bool:
+    """True when the question asks what to do rather than what happened."""
+    return bool(_PRESCRIPTIVE.search(clean(text)))
 
 
 class NormalizedQuery:

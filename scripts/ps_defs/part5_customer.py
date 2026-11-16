@@ -499,7 +499,7 @@ def defs():
             queries=["Branch performance comparison", "How do branches compare?",
                      "Which branches underperform?", "Which branches are lagging?",
                      "Best and worst branches", "Branch quality analysis",
-                     "Branch-wise metrics"],
+                     "Branch-wise metrics", "How are our branches doing?"],
             tables=["policy", "persistency"],
             columns=["policy.Branch_No", "policy.AppID", "policy.APE",
                      "policy.POLICY.STATUS", "policy.Sum.Assured",

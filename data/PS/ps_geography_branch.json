@@ -1,6 +1,6 @@
 {
   "catalogue_version": "1.0.0",
-  "generated_at_utc": "2026-11-16T06:10:53Z",
+  "generated_at_utc": "2026-11-16T08:07:56Z",
   "generated_by": "scripts/build_ps_catalogue.py",
   "data_contract_version": "1.0.0",
   "grounded_in": "Talk_to_Data_PoC_Documentation_Metadata_V4",
@@ -822,7 +822,8 @@
         "Which branches are lagging?",
         "Best and worst branches",
         "Branch quality analysis",
-        "Branch-wise metrics"
+        "Branch-wise metrics",
+        "How are our branches doing?"
       ],
       "relevant_tables": [
         "policy",
